@@ -12,6 +12,8 @@
 #define PN532_I2C_ADDR 0x24
 #define PN532_I2C_HZ 100000
 #define PN532_TIMEOUT_MS 1000
+#define PN532_INIT_RETRIES 5
+#define PN532_INIT_RETRY_MS 500
 
 #define TFI_HOST 0xD4
 #define TFI_PN532 0xD5
@@ -110,6 +112,21 @@ static bool command(uint8_t cmd, const uint8_t *params, size_t params_len, uint8
     return true;
 }
 
+static bool configure(void)
+{
+    uint8_t resp[8];
+    size_t resp_len;
+    static const uint8_t SAM_NORMAL[] = {0x01, 0x14, 0x01};
+    // Retry only a few times so that polling without a tag returns quickly.
+    static const uint8_t MAX_RETRIES[] = {0x05, 0xFF, 0x01, 0x10};
+
+    return command(CMD_GET_FIRMWARE_VERSION, NULL, 0, resp, sizeof(resp), &resp_len) &&
+           command(CMD_SAM_CONFIGURATION, SAM_NORMAL, sizeof(SAM_NORMAL), resp, sizeof(resp),
+                   &resp_len) &&
+           command(CMD_RF_CONFIGURATION, MAX_RETRIES, sizeof(MAX_RETRIES), resp, sizeof(resp),
+                   &resp_len);
+}
+
 bool pn532_init(void)
 {
     i2c_master_bus_config_t bus_cfg = {
@@ -133,19 +150,18 @@ bool pn532_init(void)
         return false;
     }
 
+    for (int retry = 0; retry <= PN532_INIT_RETRIES; retry++) {
+        if (retry > 0) {
+            ESP_LOGW(TAG, "Init failed, retry %d of %d", retry, PN532_INIT_RETRIES);
+            vTaskDelay(pdMS_TO_TICKS(PN532_INIT_RETRY_MS));
+        }
+        if (configure()) {
+            return true;
+        }
+    }
+
     log_bus_scan();
-
-    uint8_t resp[8];
-    size_t resp_len;
-    static const uint8_t SAM_NORMAL[] = {0x01, 0x14, 0x01};
-    // Retry only a few times so that polling without a tag returns quickly.
-    static const uint8_t MAX_RETRIES[] = {0x05, 0xFF, 0x01, 0x10};
-
-    return command(CMD_GET_FIRMWARE_VERSION, NULL, 0, resp, sizeof(resp), &resp_len) &&
-           command(CMD_SAM_CONFIGURATION, SAM_NORMAL, sizeof(SAM_NORMAL), resp, sizeof(resp),
-                   &resp_len) &&
-           command(CMD_RF_CONFIGURATION, MAX_RETRIES, sizeof(MAX_RETRIES), resp, sizeof(resp),
-                   &resp_len);
+    return false;
 }
 
 bool pn532_find_tag(uint8_t uid[4])
