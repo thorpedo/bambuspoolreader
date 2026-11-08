@@ -15,6 +15,8 @@ idf.py -DDEMO_TAGS=0 -p /dev/ttyACM0 flash # volver al firmware normal (la opci√
 gcc -Wall -Wextra -Werror -Imain test/test_host.c main/bambu_tag.c -o /tmp/test_host && /tmp/test_host   # tests en el PC
 ```
 
+El puerto depende del chip USB de la placa: `/dev/ttyACM0` con CH9102, `/dev/ttyUSB0` con CP210x.
+
 En WSL la placa se conecta desde PowerShell con `usbipd attach --wsl --busid <id>`.
 
 ## Estructura

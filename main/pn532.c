@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "driver/i2c_master.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -25,9 +26,25 @@
 #define MIFARE_READ 0x30
 
 #define MAX_FRAME 64
+#define PROBE_TIMEOUT_MS 50
 #define RESPONSE_DATA_OFFSET 8 // status, preamble (3), LEN, LCS, TFI, response code
 
+static const char *TAG = "pn532";
+
+static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
+
+static void log_bus_scan(void)
+{
+    int found = 0;
+    for (uint8_t addr = 0x08; addr < 0x78; addr++) {
+        if (i2c_master_probe(s_bus, addr, PROBE_TIMEOUT_MS) == ESP_OK) {
+            ESP_LOGI(TAG, "I2C device at 0x%02X", addr);
+            found++;
+        }
+    }
+    ESP_LOGI(TAG, "I2C scan: %d device(s), PN532 expected at 0x%02X", found, PN532_I2C_ADDR);
+}
 
 static bool wait_ready(void)
 {
@@ -103,8 +120,7 @@ bool pn532_init(void)
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
     };
-    i2c_master_bus_handle_t bus;
-    if (i2c_new_master_bus(&bus_cfg, &bus) != ESP_OK) {
+    if (i2c_new_master_bus(&bus_cfg, &s_bus) != ESP_OK) {
         return false;
     }
 
@@ -113,9 +129,11 @@ bool pn532_init(void)
         .device_address = PN532_I2C_ADDR,
         .scl_speed_hz = PN532_I2C_HZ,
     };
-    if (i2c_master_bus_add_device(bus, &dev_cfg, &s_dev) != ESP_OK) {
+    if (i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev) != ESP_OK) {
         return false;
     }
+
+    log_bus_scan();
 
     uint8_t resp[8];
     size_t resp_len;
