@@ -10,8 +10,9 @@ dist/
 
 .env
 
-# Configuración personal de Claude Code
-.claude/settings.local.json
+# Configuración de Claude Code
+.claude/
+CLAUDE.md
 CLAUDE.local.md
 
 # ESP-IDF
