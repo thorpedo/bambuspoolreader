@@ -70,6 +70,25 @@ static void run_demo(void)
 }
 #endif
 
+// Short enough for the screen, so the reader can be debugged without a serial cable.
+static const char *nfc_error_text(pn532_status_t status)
+{
+    switch (status) {
+    case PN532_ERR_LINE_LOW:
+        return "Sin lector NFC\nSDA/SCL a masa";
+    case PN532_ERR_NO_PULLUP:
+        return "Sin lector NFC\nNo conectado o sin 3V3";
+    case PN532_ERR_NO_DEVICE:
+        return "Sin lector NFC\nNo esta en modo I2C";
+    case PN532_ERR_WRONG_ADDRESS:
+        return "Sin lector NFC\nDireccion I2C distinta";
+    case PN532_ERR_NO_RESPONSE:
+        return "Lector NFC no responde";
+    default:
+        return "Sin lector NFC\nError del bus I2C";
+    }
+}
+
 void app_main(void)
 {
     display_init();
@@ -80,9 +99,10 @@ void app_main(void)
     run_demo();
 #endif
 
-    if (!pn532_init()) {
-        ESP_LOGE(TAG, "PN532 not found");
-        display_show_message("Sin lector NFC");
+    pn532_status_t nfc = pn532_init();
+    if (nfc != PN532_OK) {
+        ESP_LOGE(TAG, "PN532 not found (status %d)", nfc);
+        display_show_message(nfc_error_text(nfc));
         return;
     }
     display_show_message("Acerca una bobina");

@@ -61,6 +61,24 @@ idf.py -DDEMO_TAGS=0 -p /dev/ttyACM0 flash   # volver al firmware normal
 gcc -Wall -Wextra -Werror -Imain test/test_host.c main/bambu_tag.c -o test_host && ./test_host
 ```
 
+### Si no detecta el lector
+
+Si no encuentra el lector, la pantalla muestra el motivo:
+
+| Pantalla | Causa probable |
+|---|---|
+| `SDA/SCL a masa` | Una línea tocando GND, o SDA/SCL mal conectados |
+| `No conectado o sin 3V3` | Cables sueltos o sin soldar, o el módulo no recibe 3,3 V |
+| `No esta en modo I2C` | El módulo responde eléctricamente, pero los interruptores no están en I2C (tras cambiarlos, quita y vuelve a dar alimentación) |
+| `Direccion I2C distinta` | Hay otro dispositivo en el bus, pero no en la dirección 0x24 |
+| `Lector NFC no responde` | El PN532 está en 0x24 pero no contesta a los comandos |
+
+El log del puerto serie detalla cada paso: estado de SDA y SCL, escaneo del bus y el comando que falla. Para guardarlo en un fichero:
+
+```bash
+python tools/capture_log.py -p /dev/ttyACM0 -s 15 -o pn532.log
+```
+
 ### Cómo funciona
 
 Las etiquetas de Bambu Lab son MIFARE Classic 1K cifradas. La clave de cada sector se deriva del UID de la etiqueta con HKDF-SHA256, tal como documenta el proyecto [Bambu Research Group RFID Tag Guide](https://github.com/Bambu-Research-Group/RFID-Tag-Guide). El firmware lee tres bloques:
@@ -141,6 +159,24 @@ idf.py -DDEMO_TAGS=0 -p /dev/ttyACM0 flash   # back to normal firmware
 
 ```bash
 gcc -Wall -Wextra -Werror -Imain test/test_host.c main/bambu_tag.c -o test_host && ./test_host
+```
+
+### If the reader is not detected
+
+If the reader is not found, the screen shows why:
+
+| Screen | Likely cause |
+|---|---|
+| `SDA/SCL a masa` | A line touching GND, or SDA/SCL miswired |
+| `No conectado o sin 3V3` | Loose or unsoldered wires, or the module gets no 3.3 V |
+| `No esta en modo I2C` | The module is wired, but its switches are not set to I2C (power-cycle it after changing them) |
+| `Direccion I2C distinta` | Another device is on the bus, but not at address 0x24 |
+| `Lector NFC no responde` | The PN532 is at 0x24 but does not answer commands |
+
+The serial log details each step: SDA and SCL state, bus scan and the failing command. To save it to a file:
+
+```bash
+python tools/capture_log.py -p /dev/ttyACM0 -s 15 -o pn532.log
 ```
 
 ### How it works
