@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -14,29 +15,66 @@
 #define BATTERY_TASK_STACK 4096
 #define SECTOR_BLOCKS 4
 #define DEMO_INTERVAL_MS 3000
+#define RESET_MESSAGE_MS 4000
 
 static const char *TAG = "app";
 
-static bool read_block(const uint8_t uid[BAMBU_UID_LEN],
-                       uint8_t keys[BAMBU_SECTOR_COUNT][BAMBU_KEY_LEN], uint8_t block,
-                       uint8_t *out)
+// Returns the problem to show on screen, or NULL when the block was read.
+static const char *read_block(const uint8_t uid[BAMBU_UID_LEN],
+                              uint8_t keys[BAMBU_SECTOR_COUNT][BAMBU_KEY_LEN], uint8_t block,
+                              uint8_t *out)
 {
-    return pn532_auth_key_a(block, keys[block / SECTOR_BLOCKS], uid) &&
-           pn532_read_block(block, out);
+    if (!pn532_auth_key_a(block, keys[block / SECTOR_BLOCKS], uid)) {
+        ESP_LOGW(TAG, "Authentication rejected for block %d", block);
+        return "Clave rechazada\nNo parece Bambu";
+    }
+    if (!pn532_read_block(block, out)) {
+        ESP_LOGW(TAG, "Could not read block %d", block);
+        return "Error al leer\nNo muevas la bobina";
+    }
+    return NULL;
 }
 
-static bool read_tag(const uint8_t uid[BAMBU_UID_LEN], bambu_tag_t *tag)
+// Returns the problem to show on screen, or NULL when the tag was read.
+static const char *read_tag(const uint8_t uid[BAMBU_UID_LEN], bambu_tag_t *tag)
 {
     uint8_t keys[BAMBU_SECTOR_COUNT][BAMBU_KEY_LEN];
     uint8_t material[BAMBU_BLOCK_LEN];
     uint8_t name[BAMBU_BLOCK_LEN];
     uint8_t color[BAMBU_BLOCK_LEN];
+    const char *problem;
 
-    return bambu_derive_keys(uid, keys) &&
-           read_block(uid, keys, BAMBU_BLOCK_MATERIAL, material) &&
-           read_block(uid, keys, BAMBU_BLOCK_NAME, name) &&
-           read_block(uid, keys, BAMBU_BLOCK_COLOR, color) &&
-           bambu_tag_parse(material, name, color, tag);
+    if (!bambu_derive_keys(uid, keys)) {
+        ESP_LOGE(TAG, "Key derivation failed");
+        return "Error interno\nal calcular claves";
+    }
+    if ((problem = read_block(uid, keys, BAMBU_BLOCK_MATERIAL, material)) ||
+        (problem = read_block(uid, keys, BAMBU_BLOCK_NAME, name)) ||
+        (problem = read_block(uid, keys, BAMBU_BLOCK_COLOR, color))) {
+        return problem;
+    }
+    if (!bambu_tag_parse(material, name, color, tag)) {
+        ESP_LOGW(TAG, "Tag has no material");
+        return "Etiqueta vacia\no no es de Bambu";
+    }
+    return NULL;
+}
+
+// Only abnormal resets are reported: a normal power-on or reset button returns NULL.
+static const char *reset_problem_text(esp_reset_reason_t reason)
+{
+    switch (reason) {
+    case ESP_RST_BROWNOUT:
+        return "Reinicio por\nfalta de tension";
+    case ESP_RST_PANIC:
+        return "Reinicio por\nerror del programa";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+        return "Reinicio por\nbloqueo";
+    default:
+        return NULL;
+    }
 }
 
 // Runs apart from the NFC loop so the indicator keeps updating without a reader.
@@ -92,6 +130,15 @@ static const char *nfc_error_text(pn532_status_t status)
 void app_main(void)
 {
     display_init();
+
+    esp_reset_reason_t reason = esp_reset_reason();
+    const char *reset_problem = reset_problem_text(reason);
+    if (reset_problem) {
+        ESP_LOGW(TAG, "Abnormal reset (reason %d)", reason);
+        display_show_message(reset_problem);
+        vTaskDelay(pdMS_TO_TICKS(RESET_MESSAGE_MS));
+    }
+
     battery_init();
     xTaskCreate(battery_task, "battery", BATTERY_TASK_STACK, NULL, tskIDLE_PRIORITY + 1, NULL);
 
@@ -99,6 +146,7 @@ void app_main(void)
     run_demo();
 #endif
 
+    display_show_message("Buscando lector NFC");
     pn532_status_t nfc = pn532_init();
     if (nfc != PN532_OK) {
         ESP_LOGE(TAG, "PN532 not found (status %d)", nfc);
@@ -120,11 +168,11 @@ void app_main(void)
 
             tag_present = true;
             memcpy(last_uid, uid, sizeof(uid));
-            if (read_tag(uid, &tag)) {
-                display_show_tag(&tag);
+            const char *problem = read_tag(uid, &tag);
+            if (problem) {
+                display_show_message(problem);
             } else {
-                ESP_LOGW(TAG, "Could not read tag");
-                display_show_message("Etiqueta no valida");
+                display_show_tag(&tag);
             }
         }
 

@@ -73,6 +73,16 @@ Si no encuentra el lector, la pantalla muestra el motivo:
 | `Direccion I2C distinta` | Hay otro dispositivo en el bus, pero no en la dirección 0x24 |
 | `Lector NFC no responde` | El PN532 está en 0x24 pero no contesta a los comandos |
 
+Otros mensajes:
+
+| Pantalla | Causa probable |
+|---|---|
+| `Reinicio por falta de tension` | La tensión cayó y el ESP32 se reinició; suele pasar si el lector consume más de lo que da la fuente o la batería está baja |
+| `Reinicio por error del programa` o `por bloqueo` | El firmware falló; captura el log y abre un issue |
+| `Clave rechazada` | La etiqueta no es de Bambu Lab, o se apartó durante la lectura |
+| `Error al leer` | La lectura se cortó; mantén la bobina quieta sobre el lector |
+| `Etiqueta vacia` | La etiqueta se leyó pero no contiene material |
+
 El log del puerto serie detalla cada paso: estado de SDA y SCL, escaneo del bus y el comando que falla. Para guardarlo en un fichero:
 
 ```bash
@@ -172,6 +182,16 @@ If the reader is not found, the screen shows why:
 | `No esta en modo I2C` | The module is wired, but its switches are not set to I2C (power-cycle it after changing them) |
 | `Direccion I2C distinta` | Another device is on the bus, but not at address 0x24 |
 | `Lector NFC no responde` | The PN532 is at 0x24 but does not answer commands |
+
+Other messages:
+
+| Screen | Likely cause |
+|---|---|
+| `Reinicio por falta de tension` | The voltage dropped and the ESP32 restarted; usually the reader draws more than the supply gives, or the battery is low |
+| `Reinicio por error del programa` or `por bloqueo` | The firmware crashed; capture the log and open an issue |
+| `Clave rechazada` | The tag is not a Bambu Lab tag, or it moved away during the read |
+| `Error al leer` | The read was interrupted; keep the spool still on the reader |
+| `Etiqueta vacia` | The tag was read but holds no material |
 
 The serial log details each step: SDA and SCL state, bus scan and the failing command. To save it to a file:
 

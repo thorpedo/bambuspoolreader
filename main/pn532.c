@@ -13,6 +13,8 @@
 #define PN532_I2C_ADDR 0x24
 #define PN532_I2C_HZ 100000
 #define PN532_TIMEOUT_MS 1000
+#define PN532_POLL_TIMEOUT_MS 50
+#define PN532_POLL_INTERVAL_MS 10
 #define PN532_INIT_RETRIES 5
 #define PN532_INIT_RETRY_MS 500
 
@@ -107,13 +109,16 @@ static bool wait_ready(const char *step)
 {
     uint8_t status = 0;
     esp_err_t err = ESP_OK;
-    for (int elapsed = 0; elapsed < PN532_TIMEOUT_MS; elapsed += 10) {
-        err = i2c_master_receive(s_dev, &status, 1, PN532_TIMEOUT_MS);
+    // Bounded by the clock, not by a count of polls: each poll can itself block until its own
+    // timeout when the bus hangs.
+    TickType_t start = xTaskGetTickCount();
+    do {
+        err = i2c_master_receive(s_dev, &status, 1, PN532_POLL_TIMEOUT_MS);
         if (err == ESP_OK && status == 0x01) {
             return true;
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
+        vTaskDelay(pdMS_TO_TICKS(PN532_POLL_INTERVAL_MS));
+    } while (xTaskGetTickCount() - start < pdMS_TO_TICKS(PN532_TIMEOUT_MS));
     if (s_verbose) {
         ESP_LOGW(TAG, "%s: not ready after %d ms (status 0x%02X, %s)", step, PN532_TIMEOUT_MS,
                  status, esp_err_to_name(err));

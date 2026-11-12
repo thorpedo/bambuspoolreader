@@ -26,6 +26,8 @@
 #define NAME_MARGIN (MARGIN + 2)
 #define NAME_X (PANEL_WIDTH + NAME_MARGIN)
 #define NAME_WIDTH (LCD_H_RES - NAME_X - NAME_MARGIN)
+// Messages have no colour panel beside them, so they use the whole width.
+#define MESSAGE_WIDTH (LCD_H_RES - 2 * NAME_MARGIN)
 #define BATTERY_TEXT_LEN 16
 
 // LVGL ships Montserrat only in medium weight: bold is faked by drawing the text twice.
@@ -106,6 +108,14 @@ static void bold_label_set_text(const bold_label_t *label, const char *text)
     lv_label_set_text(label->front, text);
 }
 
+static void bold_label_place(const bold_label_t *label, int x, int width)
+{
+    lv_obj_set_x(label->back, x);
+    lv_obj_set_x(label->front, x + 1);
+    lv_obj_set_width(label->back, width);
+    lv_obj_set_width(label->front, width);
+}
+
 void display_init(void)
 {
     esp_lcd_panel_io_handle_t io;
@@ -154,6 +164,7 @@ void display_init(void)
 void display_show_message(const char *message)
 {
     lvgl_port_lock(0);
+    bold_label_place(&s_name, NAME_MARGIN, MESSAGE_WIDTH);
     bold_label_set_text(&s_name, message);
     lv_obj_set_hidden(s_swatch, true);
     lvgl_port_unlock();
@@ -166,6 +177,7 @@ void display_show_tag(const bambu_tag_t *tag)
     bold_label_set_text(&s_material, tag->material);
     lv_obj_set_style_text_color(s_material.back, text_color, 0);
     lv_obj_set_style_text_color(s_material.front, text_color, 0);
+    bold_label_place(&s_name, NAME_X, NAME_WIDTH);
     bold_label_set_text(&s_name, tag->name);
     lv_obj_set_style_bg_color(s_swatch, lv_color_make(tag->r, tag->g, tag->b), 0);
     lv_obj_set_hidden(s_swatch, false);
