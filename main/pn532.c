@@ -15,6 +15,8 @@
 #define PN532_TIMEOUT_MS 1000
 #define PN532_POLL_TIMEOUT_MS 50
 #define PN532_POLL_INTERVAL_MS 10
+#define PN532_WAKEUP_ATTEMPTS 3
+#define PN532_WAKEUP_MS 10
 #define PN532_INIT_RETRIES 5
 #define PN532_INIT_RETRY_MS 500
 
@@ -149,7 +151,16 @@ static bool command(uint8_t cmd, const uint8_t *params, size_t params_len, uint8
     frame[7 + params_len] = (uint8_t)(0x100 - sum);
     frame[8 + params_len] = 0x00;
 
-    esp_err_t err = i2c_master_transmit(s_dev, frame, 9 + params_len, PN532_TIMEOUT_MS);
+    esp_err_t err;
+    for (int attempt = 1;; attempt++) {
+        err = i2c_master_transmit(s_dev, frame, 9 + params_len, PN532_TIMEOUT_MS);
+        // Until SAMConfiguration, the PN532 sleeps after every answer. A sleeping PN532 NACKs
+        // the frame that wakes it up and accepts the next one.
+        if (err != ESP_ERR_INVALID_STATE || attempt == PN532_WAKEUP_ATTEMPTS) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(PN532_WAKEUP_MS));
+    }
     if (err != ESP_OK) {
         return fail("Send command", err);
     }
