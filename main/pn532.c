@@ -216,13 +216,23 @@ static bool configure(void)
                    &resp_len);
 }
 
-pn532_status_t pn532_init(void)
+static void bus_close(void)
 {
-    pn532_line_t sda = probe_line(PIN_NFC_SDA);
-    pn532_line_t scl = probe_line(PIN_NFC_SCL);
-    ESP_LOGI(TAG, "SDA (GPIO %d): %s", PIN_NFC_SDA, line_name(sda));
-    ESP_LOGI(TAG, "SCL (GPIO %d): %s", PIN_NFC_SCL, line_name(scl));
+    if (s_dev) {
+        i2c_master_bus_rm_device(s_dev);
+        s_dev = NULL;
+    }
+    if (s_bus) {
+        i2c_del_master_bus(s_bus);
+        s_bus = NULL;
+    }
+}
 
+// Creates the bus from scratch. A PN532 that is still starting up (slower on battery) NACKs or
+// stretches the clock on the first frames, and that can leave the driver unable to talk to it
+// again, so every retry gets a fresh bus instead of reusing the failed one.
+static esp_err_t bus_open(void)
+{
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port = I2C_NUM_0,
         .sda_io_num = PIN_NFC_SDA,
@@ -234,7 +244,8 @@ pn532_status_t pn532_init(void)
     esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_bus);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "I2C bus: %s", esp_err_to_name(err));
-        return PN532_ERR_BUS;
+        s_bus = NULL;
+        return err;
     }
 
     i2c_device_config_t dev_cfg = {
@@ -245,6 +256,20 @@ pn532_status_t pn532_init(void)
     err = i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "I2C device: %s", esp_err_to_name(err));
+        s_dev = NULL;
+        bus_close();
+    }
+    return err;
+}
+
+pn532_status_t pn532_init(void)
+{
+    pn532_line_t sda = probe_line(PIN_NFC_SDA);
+    pn532_line_t scl = probe_line(PIN_NFC_SCL);
+    ESP_LOGI(TAG, "SDA (GPIO %d): %s", PIN_NFC_SDA, line_name(sda));
+    ESP_LOGI(TAG, "SCL (GPIO %d): %s", PIN_NFC_SCL, line_name(scl));
+
+    if (bus_open() != ESP_OK) {
         return PN532_ERR_BUS;
     }
 
@@ -253,7 +278,12 @@ pn532_status_t pn532_init(void)
     for (int retry = 0; retry <= PN532_INIT_RETRIES; retry++) {
         if (retry > 0) {
             ESP_LOGW(TAG, "Init failed, retry %d of %d", retry, PN532_INIT_RETRIES);
+            bus_close();
             vTaskDelay(pdMS_TO_TICKS(PN532_INIT_RETRY_MS));
+            if (bus_open() != ESP_OK) {
+                s_verbose = false;
+                return PN532_ERR_BUS;
+            }
         }
         if (configure()) {
             status = PN532_OK;
@@ -265,6 +295,12 @@ pn532_status_t pn532_init(void)
         return status;
     }
 
+    // The scan also gets a clean bus, so it reports what is really connected and not the
+    // state left behind by the failed commands.
+    bus_close();
+    if (bus_open() != ESP_OK) {
+        return PN532_ERR_BUS;
+    }
     bool pn532_seen;
     int found = bus_scan(&pn532_seen);
     if (sda == PN532_LINE_LOW || scl == PN532_LINE_LOW) {
