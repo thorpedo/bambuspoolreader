@@ -10,7 +10,7 @@
 #include "display.h"
 #include "pn532.h"
 
-#define POLL_INTERVAL_MS 500
+#define POLL_INTERVAL_MS 100
 #define BATTERY_INTERVAL_MS 60000
 #define BATTERY_TASK_STACK 4096
 #define SECTOR_BLOCKS 4

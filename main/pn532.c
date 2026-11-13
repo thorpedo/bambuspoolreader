@@ -212,7 +212,9 @@ static bool configure(void)
     size_t resp_len;
     static const uint8_t SAM_NORMAL[] = {0x01, 0x14, 0x01};
     // Retry only a few times so that polling without a tag returns quickly.
-    static const uint8_t MAX_RETRIES[] = {0x05, 0xFF, 0x01, 0x10};
+    // MxRtyPassiveActivation must stay low: 16 tries without a tag outlast PN532_TIMEOUT_MS.
+    // Two retries still find a tag left active (not idle) by the previous poll or read.
+    static const uint8_t MAX_RETRIES[] = {0x05, 0xFF, 0x01, 0x02};
 
     if (!command(CMD_GET_FIRMWARE_VERSION, NULL, 0, resp, sizeof(resp), &resp_len)) {
         ESP_LOGW(TAG, "GetFirmwareVersion failed");
