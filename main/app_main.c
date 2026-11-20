@@ -16,6 +16,7 @@
 #define SECTOR_BLOCKS 4
 #define DEMO_INTERVAL_MS 3000
 #define RESET_MESSAGE_MS 4000
+#define MISSED_POLLS_TO_REMOVE 3
 
 static const char *TAG = "app";
 
@@ -157,13 +158,26 @@ void app_main(void)
 
     uint8_t last_uid[BAMBU_UID_LEN] = {0};
     bool tag_present = false;
+    int missed_polls = 0;
 
     for (;;) {
         uint8_t uid[BAMBU_UID_LEN];
 
         if (!pn532_find_tag(uid)) {
-            tag_present = false;
-        } else if (!tag_present || memcmp(uid, last_uid, sizeof(uid)) != 0) {
+            // A tag left selected/authenticated by the last read can skip a poll while it stays
+            // on the reader; only treat it as removed after several misses in a row, otherwise
+            // it is read again and again.
+            if (missed_polls < MISSED_POLLS_TO_REMOVE) {
+                missed_polls++;
+            }
+            if (missed_polls >= MISSED_POLLS_TO_REMOVE) {
+                tag_present = false;
+            }
+            vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));
+            continue;
+        }
+        missed_polls = 0;
+        if (!tag_present || memcmp(uid, last_uid, sizeof(uid)) != 0) {
             bambu_tag_t tag;
 
             tag_present = true;
