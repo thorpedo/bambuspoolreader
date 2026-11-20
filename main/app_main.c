@@ -171,6 +171,9 @@ void app_main(void)
             const char *problem = read_tag(uid, &tag);
             if (problem) {
                 display_show_message(problem);
+                // Retry on the next poll: a failed read must not latch this UID, or the tag
+                // (and the reader) stays stuck on the error while it remains in the field.
+                tag_present = false;
             } else {
                 display_show_tag(&tag);
             }
